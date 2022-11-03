@@ -1,0 +1,385 @@
+esphome:
+  name: zwiftwind
+  platform: ESP32
+  board: nodemcu-32s
+
+wifi:
+  ssid: !secret wifi_name
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "ZwiftWind Fallback Hotspot"
+    password: !secret fallback_password
+
+captive_portal:
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  password: !secret api_password
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+ota:
+  password: !secret ota_password
+  
+globals:
+  - id: speed_goal
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: speed_step_size
+    type: int
+    restore_value: no
+    initial_value: '1'
+  - id: speed_delay
+    type: int
+    restore_value: no
+    initial_value: '50'
+  
+number:
+  - platform: template
+    name: "ZwiftWind PWM Freq"
+    id: pwm_freq
+    initial_value: 24000
+    unit_of_measurement: "Hz"
+    entity_category: config
+    optimistic: true
+    disabled_by_default: true
+    min_value: 1
+    max_value: 30000
+    step: 1
+    restore_value: no
+    on_value:
+      then:
+        output.ledc.set_frequency:
+          id: pwm_output
+          frequency: !lambda "return x;"
+          
+  - platform: template
+    name: "ZwiftWind Max Fan speed"
+    entity_category: config
+    id: max_fan_speed
+    initial_value: 100
+    unit_of_measurement: "%"
+    optimistic: true
+    min_value: 1
+    max_value: 100
+    step: 1
+    restore_value: yes
+    set_action:
+      then:
+        - lambda: !lambda |-
+            ESP_LOGD("max_fan_speed","Setting set_action to = %d", int(x));
+            if (int(x) <= id(min_fan_speed).state){
+              auto call = id(min_fan_speed).make_call();
+              call.set_value(int(x)-1);
+              call.perform();
+            }
+  
+  - platform: template
+    name: "ZwiftWind Min Fan speed"
+    entity_category: config
+    id: min_fan_speed
+    initial_value: 10
+    unit_of_measurement: "%"
+    optimistic: true
+    min_value: 1
+    max_value: 100
+    step: 1
+    restore_value: yes
+    set_action:
+      then:
+        - lambda: !lambda |-
+            ESP_LOGD("min_fan_speed","Setting set_action to = %d", int(x));
+            if (int(x) >= id(max_fan_speed).state){
+              auto call = id(max_fan_speed).make_call();
+              call.set_value(int(x)+1);
+              call.perform();
+            }
+  #HR
+  - platform: template
+    name: "ZwiftWind HR Fan min"
+    entity_category: config
+    id: hr_fan_min
+    initial_value: 100
+    unit_of_measurement: "bpm"
+    optimistic: true
+    min_value: 10
+    max_value: 200
+    step: 1
+    restore_value: yes
+    set_action:
+      then:
+        - lambda: !lambda |-
+            if (int(x) >= id(hr_fan_max).state){
+              auto call = id(hr_fan_max).make_call();
+              call.set_value(int(x)+1);
+              call.perform();
+            }
+    
+  - platform: template
+    name: "ZwiftWind HR Fan max"
+    entity_category: config
+    id: hr_fan_max
+    initial_value: 150
+    unit_of_measurement: "bpm"
+    optimistic: true
+    min_value: 100
+    max_value: 220
+    step: 1
+    restore_value: yes
+    set_action:
+      then:
+        - lambda: !lambda |-
+            if (int(x) <= id(hr_fan_min).state){
+              auto call = id(hr_fan_min).make_call();
+              call.set_value(int(x)-1);
+              call.perform();
+            }
+ 
+  #Speed
+  - platform: template
+    name: "ZwiftWind Speed Fan min"
+    entity_category: config
+    id: speed_fan_min
+    initial_value: 5
+    unit_of_measurement: "km/h"
+    optimistic: true
+    min_value: 0
+    max_value: 50
+    step: 1
+    restore_value: yes
+    set_action:
+      then:
+        - lambda: !lambda |-
+            if (int(x) >= id(speed_fan_max).state){
+              auto call = id(speed_fan_max).make_call();
+              call.set_value(int(x)+1);
+              call.perform();
+            }
+    
+  - platform: template
+    name: "ZwiftWind Speed Fan max"
+    entity_category: config
+    id: speed_fan_max
+    initial_value: 50
+    unit_of_measurement: "km/h"
+    optimistic: true
+    min_value: 10
+    max_value: 150
+    step: 1
+    restore_value: yes
+    set_action:
+      then:
+        - lambda: !lambda |-
+            if (int(x) <= id(speed_fan_min).state){
+              auto call = id(speed_fan_min).make_call();
+              call.set_value(int(x)-1);
+              call.perform();
+            }
+    
+  #Power
+  - platform: template
+    name: "ZwiftWind Power Fan min"
+    entity_category: config
+    id: power_fan_min
+    initial_value: 10
+    unit_of_measurement: "W"
+    optimistic: true
+    min_value: 10
+    max_value: 2000
+    step: 1
+    restore_value: yes
+    set_action:
+      then:
+        - lambda: !lambda |-
+            if (int(x) >= id(power_fan_max).state){
+              auto call = id(power_fan_max).make_call();
+              call.set_value(int(x)+1);
+              call.perform();
+            }
+    
+  - platform: template
+    name: "ZwiftWind Power Fan max"
+    entity_category: config
+    id: power_fan_max
+    initial_value: 500
+    unit_of_measurement: "W"
+    optimistic: true
+    min_value: 10
+    max_value: 2400
+    step: 1
+    restore_value: yes
+    set_action:
+      then:
+        - lambda: !lambda |-
+            if (int(x) <= id(power_fan_min).state){
+              auto call = id(power_fan_min).make_call();
+              call.set_value(int(x)-1);
+              call.perform();
+            }
+    
+select:
+  - platform: template
+    name: "ZwiftWind Mode"
+    id: mode
+    entity_category: config
+    optimistic: true
+    options:
+      - HR
+      - Speed
+      - Power
+      - Manual
+    initial_option: Manual
+    
+script:
+  - id: speed_stepping
+    mode: queued
+    then:
+      - if:
+          condition:
+            lambda: |-
+              if ( id(the_fan).speed != id(speed_goal) ){
+                return true; //continue stepping
+              }
+              else {
+                return false;
+              }
+          then:
+            - fan.turn_on:
+                id: the_fan
+                speed: !lambda |-
+                  if ( id(the_fan).speed < id(speed_goal) ){
+                    return id(the_fan).speed + id(speed_step_size);
+                  }
+                  else {
+                    return (id(the_fan).speed - id(speed_step_size));
+                  }
+            - delay: !lambda "return id(speed_delay);"
+            - script.execute: speed_stepping
+          else:
+            - sensor.template.publish:
+                id: sens_fanspeed
+                state: !lambda 'return id(speed_goal);'
+            - script.stop: speed_stepping
+            
+  - id: fan_adjust_hr
+    then:
+      - lambda: |-
+          // percentage = (actual - min) / (max - min)
+          float desired_speed = ((( id(zwift_heartrate).state - id(hr_fan_min).state ) / ( id(hr_fan_max).state - id(hr_fan_min).state)) * ( id(max_fan_speed).state - id(min_fan_speed).state )) + id(min_fan_speed).state;
+          if (desired_speed < id(min_fan_speed).state) {
+            desired_speed = id(min_fan_speed).state;
+          }
+          else if ( desired_speed > id(max_fan_speed).state ){
+            desired_speed = id(max_fan_speed).state;
+          }
+          id(speed_goal) = int(desired_speed);
+      - script.execute: speed_stepping
+
+  - id: fan_adjust_speed
+    then:
+      - lambda: |-
+          float desired_speed = ((( id(zwift_speed).state - id(speed_fan_min).state ) / ( id(speed_fan_max).state - id(speed_fan_min).state)) * ( id(max_fan_speed).state - id(min_fan_speed).state )) + id(min_fan_speed).state;
+          if (desired_speed < id(min_fan_speed).state) {
+            desired_speed = id(min_fan_speed).state;
+          }
+          else if ( desired_speed > id(max_fan_speed).state ){
+            desired_speed = id(max_fan_speed).state;
+          }
+          id(speed_goal) = int(desired_speed);
+      - script.execute: speed_stepping
+          
+  - id: fan_adjust_power
+    then:
+      - lambda: |-
+          // percentage = (actual - min) / (max - min)
+          float desired_speed = ((( id(zwift_power).state - id(power_fan_min).state ) / ( id(power_fan_max).state - id(power_fan_min).state)) * ( id(max_fan_speed).state - id(min_fan_speed).state )) + id(min_fan_speed).state ;
+          if (desired_speed < id(min_fan_speed).state) {
+            desired_speed = id(min_fan_speed).state;
+          }
+          else if ( desired_speed > id(max_fan_speed).state ){
+            desired_speed = id(max_fan_speed).state;
+          }
+          id(speed_goal) = int(desired_speed);
+      - script.execute: speed_stepping
+      
+sensor:
+  - platform: wifi_signal
+    name: ZwiftWind WiFi Signal
+    entity_category: diagnostic
+    update_interval: 60s
+    
+  - platform: template
+    name: ZwiftWind Fanspeed
+    id: sens_fanspeed
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+    icon: "mdi:fan"
+    update_interval: 60s
+  
+  # Zwift sensors in Homeassistant
+  - platform: homeassistant
+    id: zwift_heartrate
+    entity_id: !secret zwift_hr_entity 
+    on_value:
+      if:
+        condition:
+          and:
+            - fan.is_on: the_fan
+            - lambda: |-
+                return x > 0; //valid HeartRate
+            - lambda: |-
+                return id(mode).state == "HR";
+        then:
+          - script.execute: fan_adjust_hr
+  - platform: homeassistant
+    id: zwift_power
+    entity_id: !secret zwift_power_entity
+    on_value:
+      if:
+        condition:
+          and:
+            - fan.is_on: the_fan
+            - lambda: |-
+                return id(mode).state == "Power";
+        then:
+          - script.execute: fan_adjust_power
+  - platform: homeassistant
+    id: zwift_speed
+    entity_id: !secret zwift_speed_entity
+    on_value:
+      if:
+        condition:
+          and:
+            - fan.is_on: the_fan
+            - lambda: |-
+                return id(mode).state == "Speed";
+        then:
+          - script.execute: fan_adjust_speed
+  
+switch:
+  - platform: restart
+    name: ZwiftWind Restart
+    entity_category: diagnostic
+    disabled_by_default: true
+
+output:
+  - platform: ledc
+    id: pwm_output
+    pin: GPIO19
+    inverted: yes
+    frequency: 24000
+
+fan:
+  - platform: speed
+    name: "ZwiftWind Fan"
+    id: the_fan
+    output: pwm_output
+
